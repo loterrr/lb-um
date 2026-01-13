@@ -5,18 +5,22 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 1. Enable CORS (Allow Frontend to talk to Backend)
-  app.enableCors({
-    origin: 'http://localhost:3001', // Allow your Next.js app
-    credentials: true,
-  });
-
-  // 2. Validation (Already added previously)
+  // 1. Enable Validation (for your DTOs)
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     transform: true,
   }));
 
-  await app.listen(3000);
+  // 2. Enable CORS (So your Vercel frontend can talk to this backend)
+  app.enableCors(); 
+
+  // 3. THE FIX: Use the system port OR 3000
+  // Render automatically sets 'PORT', so this is required.
+  const port = process.env.PORT || 3000;
+  
+  // 4. Listen on 0.0.0.0 (Required for Render/Cloud hosting)
+  await app.listen(port, '0.0.0.0');
+  
+  console.log(`Application is running on: ${await app.getUrl()}`);
 }
 bootstrap();
