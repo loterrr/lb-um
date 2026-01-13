@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums for Role-Based Access Control
+enum Role {
+  ADMIN
+  JUDGE
+}
+
+enum EventType {
+  SPORT
+  SOCIO
+}
+
+// 1. User Management
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String   // Will be hashed
+  role      Role     @default(JUDGE)
+  name      String
+  
+  // Relations
+  scoreLogs    ScoreLog[]  // Audit trail of what this user did
+  judgeScores  Score[]     // Actual scores given by this judge
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 2. Organization Structure
+model Season {
+  id        String   @id @default(uuid())
+  name      String   // e.g., "Intramurals 2026"
+  isActive  Boolean  @default(true)
+  
+  events    Event[]
+  createdAt DateTime @default(now())
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String   // e.g., "College of Engineering"
+  shortName String   // e.g., "COE"
+  color     String?  // Hex code for UI dashboard
+  
+  teams     Team[]
+}
+
+// 3. Event Management
+model Event {
+  id        String    @id @default(uuid())
+  seasonId  String
+  season    Season    @relation(fields: [seasonId], references: [id])
+  
+  title     String    // e.g., "Modern Dance" or "Basketball Men"
+  type      EventType
+  
+  // THE CONFIG JSON
+  // For Socio: { "criteria": [{ "name": "Creativity", "max": 25 }, { "name": "Execution", "max": 25 }] }
+  // For Sport: { "rules": "standard_fiba" }
+  config    Json      
+  
+  status    String    @default("PENDING") // PENDING, ONGOING, COMPLETED
+  
+  matches   Match[]   // For Sports
+  scores    Score[]   // For Socio (Judges)
+  candidates Candidate[]
+  
+  createdAt DateTime @default(now())
+}
+
+// 4. Sports Engine Models
+model Team {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  
+  matchesAsA     Match[]      @relation("TeamA")
+  matchesAsB     Match[]      @relation("TeamB")
+}
+
+model Match {
+  id        String   @id @default(uuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id])
+  
+  teamAId   String
+  teamBId   String
+  teamA     Team     @relation("TeamA", fields: [teamAId], references: [id])
+  teamB     Team     @relation("TeamB", fields: [teamBId], references: [id])
+  
+  scoreA    Int?
+  scoreB    Int?
+  winnerId  String?  // ID of the winning team
+  
+  round     String?  // e.g., "Semi-Finals"
+}
+
+// 5. Socio Engine Models
+model Score {
+  id        String   @id @default(uuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id])
+  
+  judgeId   String
+  judge     User     @relation(fields: [judgeId], references: [id])
+  
+  candidateId String // Or TeamID, depending on if it's individual or group contest
+  candidate   Candidate @relation(fields: [candidateId], references: [id])
+
+  // The actual scores matching the criteria in Event.config
+  // e.g., { "Creativity": 24, "Execution": 20 }
+  breakdown Json 
+  total     Float
+  
+  isLocked  Boolean  @default(false) // Once locked, judge cannot edit
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([eventId, judgeId, candidateId]) // Prevent duplicate scoring
+}
+
+// 6. Security & Audit (Moved to Phase 2, but defined now)
+model ScoreLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  action    String   // e.g., "SUBMIT_SCORE", "UPDATE_MATCH"
+  details   Json     // Snapshot of the data changed
+  
+  timestamp DateTime @default(now())
+}
+
+model Candidate {
+  id        String   @id @default(uuid())
+  name      String
+  number    Int      // e.g. Candidate #1
+  photo     String?  // Optional URL to image
+  
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id])
+  
+  // Relations
+  scores    Score[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
